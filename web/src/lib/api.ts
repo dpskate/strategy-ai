@@ -129,7 +129,15 @@ export interface ResearchJob {
   results?: ResearchResult[];
   error?: string;
   params?: Record<string, unknown>;
-  progress?: { current: number; total: number; valid: number; population: number };
+  progress?: {
+    current: number;
+    total: number;
+    valid: number;
+    population: number;
+    pct?: number;
+    best_score?: number;
+    top_results?: { description: string; score: number; roi_pct: number; win_rate: number }[];
+  };
   pareto_data?: { roi: number; sharpe: number; drawdown: number; pareto: boolean }[];
   method?: string;
 }

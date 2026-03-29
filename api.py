@@ -3,10 +3,10 @@
 Strategy AI — FastAPI Backend
 把 5 個模組包成 REST API
 """
-import json, os, time, uuid, traceback, math
+import asyncio, json, os, time, uuid, traceback, math
 from datetime import datetime, timezone, timedelta
 from typing import Optional
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -409,11 +409,23 @@ def _run_research_job(job_id: str, req: ResearchRequest):
         total_gens = req.generations
 
         def progress_callback(gen, gen_results):
+            top5 = gen_results[:5]
             jobs[job_id]["progress"] = {
                 "current": gen + 1,
                 "total": total_gens,
+                "pct": round((gen + 1) / total_gens * 100),
                 "valid": len(gen_results),
                 "population": req.population_size,
+                "best_score": round(top5[0]["score"], 2) if top5 else None,
+                "top_results": [
+                    {
+                        "description": dna_to_description(r["dna"]),
+                        "score": round(r["score"], 2),
+                        "roi_pct": r["metrics"].get("roi_pct", 0),
+                        "win_rate": r["metrics"].get("win_rate", 0),
+                    }
+                    for r in top5
+                ] if top5 else [],
             }
 
         deriv = _fetch_derivatives(req.symbol, req.interval, candles)
@@ -511,6 +523,48 @@ def get_research(job_id: str):
     if job_id not in jobs:
         raise HTTPException(404, "任務不存在")
     return jobs[job_id]
+
+
+@app.websocket("/ws/research/{job_id}")
+async def ws_research(websocket: WebSocket, job_id: str):
+    """WebSocket 實時推送研發進度"""
+    await websocket.accept()
+    if job_id not in jobs:
+        await websocket.close(code=4004)
+        return
+    last_gen = -1
+    try:
+        while True:
+            job = jobs.get(job_id, {})
+            status = job.get("status", "unknown")
+            progress = job.get("progress")
+            current_gen = progress.get("current", 0) if progress else 0
+
+            if current_gen != last_gen or status in ("done", "failed"):
+                payload: dict = {"status": status, "progress": progress}
+                if status == "done" and job.get("results"):
+                    top5 = job["results"][:5]
+                    payload["top_results"] = [
+                        {
+                            "rank": r["rank"],
+                            "score": r["score"],
+                            "description": r["description"],
+                            "roi_pct": r["metrics"].get("roi_pct", 0),
+                            "win_rate": r["metrics"].get("win_rate", 0),
+                        }
+                        for r in top5
+                    ]
+                await websocket.send_json(payload)
+                last_gen = current_gen
+
+            if status in ("done", "failed"):
+                break
+
+            await asyncio.sleep(0.3)
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        pass
 
 
 # ═══════════════════════════════════════════════════

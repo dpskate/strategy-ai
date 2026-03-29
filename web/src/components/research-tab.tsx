@@ -47,6 +47,12 @@ export function ResearchTab({ onRunStrategy, onOptimizeStrategy }: {
     } catch {}
   }, []);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const [wsProgress, setWsProgress] = useState<{
+    status: string;
+    progress?: { current: number; total: number; pct?: number; best_score?: number; valid: number; population: number; top_results?: { description: string; score: number; roi_pct: number; win_rate: number }[] };
+    top_results?: { rank: number; score: number; description: string; roi_pct: number; win_rate: number }[];
+  } | null>(null);
 
   // Gene library + selection
   const [geneLib, setGeneLib] = useState<{
@@ -143,6 +149,7 @@ export function ResearchTab({ onRunStrategy, onOptimizeStrategy }: {
     setLoading(true);
     setJob(null);
     setSelected(null);
+    setWsProgress(null);
     setResearchStartTime(Date.now());
     try {
       const { job_id } = await api.startResearch({
@@ -170,7 +177,21 @@ export function ResearchTab({ onRunStrategy, onOptimizeStrategy }: {
         ...(endDate ? { end_date: endDate } : {}),
       });
 
-      // Poll for results
+      // WebSocket for real-time progress
+      const wsBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8100").replace(/^http/, "ws");
+      const ws = new WebSocket(`${wsBase}/ws/research/${job_id}`);
+      wsRef.current = ws;
+      ws.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          setWsProgress(data);
+          if (data.status === "done" || data.status === "failed") ws.close();
+        } catch {}
+      };
+      ws.onerror = () => ws.close();
+      ws.onclose = () => { wsRef.current = null; };
+
+      // Poll for results (fallback + final state)
       pollRef.current = setInterval(async () => {
         try {
           const status = await api.getResearch(job_id);
@@ -202,6 +223,10 @@ export function ResearchTab({ onRunStrategy, onOptimizeStrategy }: {
     if (pollRef.current) {
       clearInterval(pollRef.current);
       pollRef.current = null;
+    }
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
     }
     setLoading(false);
   }, []);
@@ -344,8 +369,8 @@ export function ResearchTab({ onRunStrategy, onOptimizeStrategy }: {
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {job?.progress
-                    ? `第 ${job.progress.current}/${job.progress.total} 輪`
+                  {(wsProgress?.progress ?? job?.progress)
+                    ? `第 ${(wsProgress?.progress ?? job?.progress)!.current}/${(wsProgress?.progress ?? job?.progress)!.total} 輪`
                     : "啟動中..."}
                 </>
               ) : (
@@ -360,25 +385,45 @@ export function ResearchTab({ onRunStrategy, onOptimizeStrategy }: {
                 停止研發
               </Button>
             )}
-            {loading && job?.progress && (
-              <div className="space-y-1">
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div
-                    className="bg-emerald-500 h-2 rounded-full transition-all duration-500"
-                    style={{ width: `${(job.progress.current / job.progress.total) * 100}%` }}
-                  />
+            {loading && (job?.progress || wsProgress?.progress) && (() => {
+              const p = wsProgress?.progress ?? job?.progress!;
+              return (
+                <div className="space-y-2">
+                  <div className="w-full bg-muted rounded-full h-2">
+                    <div
+                      className="bg-emerald-500 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${p.pct ?? Math.round((p.current / p.total) * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground text-center">
+                    第 {p.current}/{p.total} 輪 · 有效策略 {p.valid}/{p.population}
+                    {researchStartTime && p.current > 0 && (() => {
+                      const elapsed = (Date.now() - researchStartTime) / 1000;
+                      const perRound = elapsed / p.current;
+                      const remaining = Math.round(perRound * (p.total - p.current));
+                      return remaining > 0 ? ` · 預估剩餘 ${remaining < 60 ? `${remaining}s` : `${Math.floor(remaining / 60)}m${remaining % 60}s`}` : "";
+                    })()}
+                  </p>
+                  {p.best_score != null && (
+                    <div className="flex items-center justify-between text-xs px-1">
+                      <span className="text-muted-foreground">當前最佳</span>
+                      <span className="text-emerald-400 font-mono font-medium">{p.best_score.toFixed(1)} 分</span>
+                    </div>
+                  )}
+                  {p.top_results && p.top_results.length > 0 && (
+                    <div className="space-y-1 border-t pt-2">
+                      <p className="text-[10px] text-muted-foreground">本輪 Top {p.top_results.length}</p>
+                      {p.top_results.slice(0, 3).map((r, i) => (
+                        <div key={i} className="text-[10px] flex items-center justify-between gap-1">
+                          <span className="text-muted-foreground truncate flex-1">{r.description}</span>
+                          <span className="text-emerald-400 shrink-0">ROI {r.roi_pct}%</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-                <p className="text-xs text-muted-foreground text-center">
-                  第 {job.progress.current}/{job.progress.total} 輪 · 有效策略 {job.progress.valid}/{job.progress.population}
-                  {researchStartTime && job.progress.current > 0 && (() => {
-                    const elapsed = (Date.now() - researchStartTime) / 1000;
-                    const perRound = elapsed / job.progress.current;
-                    const remaining = Math.round(perRound * (job.progress.total - job.progress.current));
-                    return remaining > 0 ? ` · 預估剩餘 ${remaining < 60 ? `${remaining}s` : `${Math.floor(remaining / 60)}m${remaining % 60}s`}` : "";
-                  })()}
-                </p>
-              </div>
-            )}
+              );
+            })()}
           </CardContent>
         </Card>
 
