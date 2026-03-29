@@ -1663,7 +1663,8 @@ def run_research(candles, generations=10, population_size=20, top_k=5, verbose=T
             print(f"         {dna_to_description(best['dna'])}")
 
         if on_progress:
-            on_progress(gen, valid)
+            best = valid[0] if valid else None
+            on_progress(gen, valid, best)
 
         # Early stopping: check if best score improved
         current_best = valid[0]["score"] if valid else -999
@@ -1677,7 +1678,7 @@ def run_research(candles, generations=10, population_size=20, top_k=5, verbose=T
             if verbose:
                 print(f"  ⏹ 早停: 連續 {stagnant_gens} 代無提升，停止進化")
             if on_progress:
-                on_progress(gen, valid)  # final progress update
+                on_progress(gen, valid, valid[0] if valid else None)  # final progress update
             break
 
         # Keep top performers (with diversity)

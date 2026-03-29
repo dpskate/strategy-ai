@@ -6,7 +6,8 @@ Strategy AI — FastAPI Backend
 import json, os, time, uuid, traceback, math
 from datetime import datetime, timezone, timedelta
 from typing import Optional
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+import asyncio
+from fastapi import FastAPI, HTTPException, BackgroundTasks, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -408,13 +409,18 @@ def _run_research_job(job_id: str, req: ResearchRequest):
 
         total_gens = req.generations
 
-        def progress_callback(gen, gen_results):
-            jobs[job_id]["progress"] = {
+        def progress_callback(gen, gen_results, best=None):
+            progress = {
                 "current": gen + 1,
                 "total": total_gens,
                 "valid": len(gen_results),
                 "population": req.population_size,
             }
+            if best:
+                progress["best_score"] = round(best["score"], 2) if not math.isinf(best["score"]) else 9999
+                progress["best_roi"] = best["metrics"].get("roi_pct", 0)
+                progress["best_win_rate"] = best["metrics"].get("win_rate", 0)
+            jobs[job_id]["progress"] = progress
 
         deriv = _fetch_derivatives(req.symbol, req.interval, candles)
 
@@ -510,7 +516,38 @@ def get_research(job_id: str):
     """查詢研發任務狀態"""
     if job_id not in jobs:
         raise HTTPException(404, "任務不存在")
-    return jobs[job_id]
+    job = jobs[job_id]
+    if job["status"] == "failed":
+        raise HTTPException(500, job.get("error", "研發任務失敗"))
+    return job
+
+
+@app.websocket("/ws/research")
+async def ws_research(websocket: WebSocket, job_id: str):
+    """WebSocket 即時研發進度推送"""
+    await websocket.accept()
+    try:
+        while True:
+            if job_id not in jobs:
+                await websocket.send_json({"error": "任務不存在"})
+                break
+            job = jobs[job_id]
+            msg = {
+                "status": job["status"],
+                "progress": job.get("progress"),
+                "error": job.get("error"),
+            }
+            if job["status"] == "done":
+                msg["results_count"] = len(job.get("results", []))
+                await websocket.send_json(msg)
+                break
+            elif job["status"] == "failed":
+                await websocket.send_json(msg)
+                break
+            await websocket.send_json(msg)
+            await asyncio.sleep(1)
+    except WebSocketDisconnect:
+        pass
 
 
 # ═══════════════════════════════════════════════════

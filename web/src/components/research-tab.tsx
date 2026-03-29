@@ -47,6 +47,8 @@ export function ResearchTab({ onRunStrategy, onOptimizeStrategy }: {
     } catch {}
   }, []);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
+  const [wsProgress, setWsProgress] = useState<{ best_score?: number; best_roi?: number; best_win_rate?: number } | null>(null);
 
   // Gene library + selection
   const [geneLib, setGeneLib] = useState<{
@@ -170,6 +172,24 @@ export function ResearchTab({ onRunStrategy, onOptimizeStrategy }: {
         ...(endDate ? { end_date: endDate } : {}),
       });
 
+      // WebSocket for real-time progress
+      const wsBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8100").replace(/^http/, "ws");
+      const ws = new WebSocket(`${wsBase}/ws/research?job_id=${job_id}`);
+      wsRef.current = ws;
+      ws.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data.progress?.best_score !== undefined) {
+            setWsProgress({
+              best_score: data.progress.best_score,
+              best_roi: data.progress.best_roi,
+              best_win_rate: data.progress.best_win_rate,
+            });
+          }
+        } catch {}
+      };
+      ws.onerror = () => ws.close();
+
       // Poll for results
       pollRef.current = setInterval(async () => {
         try {
@@ -177,6 +197,7 @@ export function ResearchTab({ onRunStrategy, onOptimizeStrategy }: {
           setJob(status);
           if (status.status === "done" || status.status === "failed") {
             if (pollRef.current) clearInterval(pollRef.current);
+            if (wsRef.current) { wsRef.current.close(); wsRef.current = null; }
             setLoading(false);
             // Notify user
             if (status.status === "done" && document.hidden) {
@@ -203,6 +224,11 @@ export function ResearchTab({ onRunStrategy, onOptimizeStrategy }: {
       clearInterval(pollRef.current);
       pollRef.current = null;
     }
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    setWsProgress(null);
     setLoading(false);
   }, []);
 
@@ -377,6 +403,11 @@ export function ResearchTab({ onRunStrategy, onOptimizeStrategy }: {
                     return remaining > 0 ? ` · 預估剩餘 ${remaining < 60 ? `${remaining}s` : `${Math.floor(remaining / 60)}m${remaining % 60}s`}` : "";
                   })()}
                 </p>
+                {wsProgress?.best_score !== undefined && (
+                  <p className="text-xs text-emerald-400 text-center font-mono">
+                    當前最佳 Score {wsProgress.best_score} · ROI {wsProgress.best_roi ?? 0}% · WR {wsProgress.best_win_rate ?? 0}%
+                  </p>
+                )}
               </div>
             )}
           </CardContent>
