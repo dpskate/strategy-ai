@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Dna, Loader2, Trophy, Copy, Check, Settings, Play, Bookmark, ChevronDown, ChevronUp, Zap, LogOut, Wrench } from "lucide-react";
 import { saveStrategy, genId } from "@/lib/storage";
 import { gradeStrategy } from "@/components/metrics-panel";
+import { useAppStore } from "@/lib/store";
 import { CrossValidateButton, CrossValidatePanel } from "@/components/cross-validate";
 import { MonteCarloButton, MonteCarloPanel } from "@/components/monte-carlo";
 
@@ -28,6 +29,8 @@ export function ResearchTab({ onRunStrategy, onOptimizeStrategy }: {
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
 
+  const { researchJob, setResearchJob, resetAll } = useAppStore();
+
   const [loading, setLoading] = useState(false);
   const [researchStartTime, setResearchStartTime] = useState<number | null>(null);
   const [job, setJob] = useState<ResearchJob | null>(null);
@@ -36,15 +39,9 @@ export function ResearchTab({ onRunStrategy, onOptimizeStrategy }: {
   const [showCrossValidate, setShowCrossValidate] = useState(false);
   const [showMonteCarlo, setShowMonteCarlo] = useState(false);
 
-  // Restore completed job from sessionStorage after mount
+  // Restore completed job from store after mount
   useEffect(() => {
-    try {
-      const v = sessionStorage.getItem("research_job");
-      if (v) {
-        const parsed = JSON.parse(v);
-        if (parsed?.status === "done") setJob(parsed);
-      }
-    } catch {}
+    if (researchJob?.status === "done") setJob(researchJob);
   }, []);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -182,9 +179,9 @@ export function ResearchTab({ onRunStrategy, onOptimizeStrategy }: {
             if (status.status === "done" && document.hidden) {
               try { new Notification("策略 AI", { body: `研發完成！找到 ${status.results?.length ?? 0} 個策略`, icon: "/favicon.ico" }); } catch {}
             }
-            // Persist completed job to sessionStorage
+            // Persist completed job to store
             if (status.status === "done") {
-              try { sessionStorage.setItem("research_job", JSON.stringify(status)); } catch {}
+              setResearchJob(status);
             }
             // Auto-select handled by rankedResults effect
           }
@@ -684,18 +681,7 @@ export function ResearchTab({ onRunStrategy, onOptimizeStrategy }: {
                   onClick={() => {
                     setJob(null);
                     setSelected(null);
-                    try {
-                      sessionStorage.removeItem("research_job");
-                      // 連帶清除優化工作台的狀態
-                      sessionStorage.removeItem("opt_dna");
-                      sessionStorage.removeItem("opt_code");
-                      sessionStorage.removeItem("opt_desc");
-                      sessionStorage.removeItem("opt_job");
-                      sessionStorage.removeItem("opt_src_genes");
-                      sessionStorage.removeItem("opt_symbol");
-                      sessionStorage.removeItem("opt_interval");
-                      sessionStorage.removeItem("opt_genelib");
-                    } catch {}
+                    resetAll();
                     // 通知其他 tab 重置
                     window.dispatchEvent(new Event("optimize-reset"));
                   }}

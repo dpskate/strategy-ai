@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   Wrench, Loader2, Zap, Settings, Dna, LogOut,
 } from "lucide-react";
+import { useAppStore } from "@/lib/store";
 
 interface GeneInfo {
   desc: string;
@@ -44,6 +45,8 @@ export function OptimizeTab({ onRunStrategy, onJobComplete, onReset, initialDna,
 
   const [mounted, setMounted] = useState(false);
   useEffect(() => { setMounted(true); }, []);
+
+  const { resetOptimizeSource } = useAppStore();
 
   useEffect(() => {
     api.genes().then(setGeneLib).catch(() => {});
@@ -277,11 +280,7 @@ export function OptimizeTab({ onRunStrategy, onJobComplete, onReset, initialDna,
                     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
                     setLoading(false);
                     setJobProgress(null);
-                    try {
-                      sessionStorage.removeItem("opt_dna");
-                      sessionStorage.removeItem("opt_code");
-                      sessionStorage.removeItem("opt_desc");
-                    } catch {}
+                    resetOptimizeSource();
                     onReset();
                   }}
                 >

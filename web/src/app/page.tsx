@@ -6,28 +6,24 @@ import { BacktestTab, BacktestTabRef } from "@/components/backtest-tab";
 import { ResearchTab } from "@/components/research-tab";
 import { OptimizeTab, OptimizeJobState } from "@/components/optimize-tab";
 import { OptimizeResultsTab } from "@/components/optimize-results-tab";
-import { ResearchResult, ResearchJob, api } from "@/lib/api";
+import { ResearchResult, api } from "@/lib/api";
 import { FactorTab } from "@/components/factor-tab";
 import { MonitorTab } from "@/components/monitor-tab";
 import { Zap, Activity, Terminal } from "lucide-react";
+import { useAppStore } from "@/lib/store";
 
 const VALID_TABS = ["backtest", "research", "optimize", "opt-results", "factors", "monitor"];
-
-function ssGet<T>(key: string): T | undefined {
-  if (typeof window === "undefined") return undefined;
-  try {
-    const v = sessionStorage.getItem(key);
-    return v ? JSON.parse(v) : undefined;
-  } catch { return undefined; }
-}
-function ssSet(key: string, val: unknown) {
-  try { sessionStorage.setItem(key, JSON.stringify(val)); } catch {}
-}
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState("backtest");
   const backtestRef = useRef<BacktestTabRef>(null);
   const [apiOnline, setApiOnline] = useState<boolean | null>(null);
+
+  const {
+    optimizeDna, optimizeCode, optimizeDesc,
+    optJob, optGeneLib, optSourceGenes, optSymbol, optInterval,
+    setOptimizeSource, setOptResults, setOptJob, resetAll,
+  } = useAppStore();
 
   // Health check
   useEffect(() => {
@@ -52,63 +48,14 @@ export default function Home() {
       const hash = window.location.hash.replace("#", "");
       if (VALID_TABS.includes(hash)) setActiveTab(hash);
     };
-    const onOptReset = () => {
-      setOptimizeDna(undefined);
-      setOptimizeCode(undefined);
-      setOptimizeDesc(undefined);
-      setOptJob(null);
-      setOptGeneLib(null);
-      setOptSourceGenes([]);
-    };
+    const onOptReset = () => resetAll();
     window.addEventListener("hashchange", onHash);
     window.addEventListener("optimize-reset", onOptReset);
     return () => {
       window.removeEventListener("hashchange", onHash);
       window.removeEventListener("optimize-reset", onOptReset);
     };
-  }, []);
-
-  // Optimize tab state
-  const [optimizeDna, setOptimizeDna] = useState<ResearchResult["dna"] | undefined>();
-  const [optimizeCode, setOptimizeCode] = useState<string | undefined>();
-  const [optimizeDesc, setOptimizeDesc] = useState<string | undefined>();
-
-  // Optimize results state
-  const [optJob, setOptJob] = useState<ResearchJob | null>(null);
-  const [optGeneLib, setOptGeneLib] = useState<OptimizeJobState["geneLib"]>(null);
-  const [optSourceGenes, setOptSourceGenes] = useState<string[]>([]);
-  const [optSymbol, setOptSymbol] = useState("BTCUSDT");
-  const [optInterval, setOptInterval] = useState("4h");
-
-  // Restore states from sessionStorage after mount
-  useEffect(() => {
-    const dna = ssGet<ResearchResult["dna"]>("opt_dna");
-    const code = ssGet<string>("opt_code");
-    const desc = ssGet<string>("opt_desc");
-    const job = ssGet<ResearchJob>("opt_job");
-    const genes = ssGet<string[]>("opt_src_genes");
-    const sym = ssGet<string>("opt_symbol");
-    const intv = ssGet<string>("opt_interval");
-    const glib = ssGet<OptimizeJobState["geneLib"]>("opt_genelib");
-    if (dna) setOptimizeDna(dna);
-    if (code) setOptimizeCode(code);
-    if (desc) setOptimizeDesc(desc);
-    if (job) setOptJob(job);
-    if (genes) setOptSourceGenes(genes);
-    if (sym) setOptSymbol(sym);
-    if (intv) setOptInterval(intv);
-    if (glib) setOptGeneLib(glib);
-  }, []);
-
-  // Persist states
-  useEffect(() => { ssSet("opt_dna", optimizeDna); }, [optimizeDna]);
-  useEffect(() => { ssSet("opt_code", optimizeCode); }, [optimizeCode]);
-  useEffect(() => { ssSet("opt_desc", optimizeDesc); }, [optimizeDesc]);
-  useEffect(() => { ssSet("opt_job", optJob); }, [optJob]);
-  useEffect(() => { ssSet("opt_src_genes", optSourceGenes); }, [optSourceGenes]);
-  useEffect(() => { ssSet("opt_symbol", optSymbol); }, [optSymbol]);
-  useEffect(() => { ssSet("opt_interval", optInterval); }, [optInterval]);
-  useEffect(() => { ssSet("opt_genelib", optGeneLib); }, [optGeneLib]);
+  }, [resetAll]);
 
   const handleRunStrategy = (code: string, opts?: { sl?: number; tp?: number }) => {
     if (backtestRef.current) {
@@ -118,33 +65,18 @@ export default function Home() {
   };
 
   const handleOptimizeStrategy = (result: ResearchResult) => {
-    setOptimizeDna(result.dna);
-    setOptimizeCode(result.code);
-    setOptimizeDesc(result.description);
+    setOptimizeSource(result.dna, result.code, result.description);
     changeTab("optimize");
   };
 
   const handleJobComplete = (state: OptimizeJobState) => {
-    setOptJob(state.job);
-    setOptGeneLib(state.geneLib);
-    setOptSourceGenes(state.sourceGenes);
-    setOptSymbol(state.symbol);
-    setOptInterval(state.interval);
+    setOptResults(state.job, state.geneLib, state.sourceGenes, state.symbol, state.interval);
     changeTab("opt-results");
   };
 
-  const handleOptimizeReset = () => {
-    setOptimizeDna(undefined);
-    setOptimizeCode(undefined);
-    setOptimizeDesc(undefined);
-    setOptJob(null);
-    setOptGeneLib(null);
-    setOptSourceGenes([]);
-  };
+  const handleOptimizeReset = () => resetAll();
 
-  const handleClearResults = () => {
-    setOptJob(null);
-  };
+  const handleClearResults = () => setOptJob(null);
 
   return (
     <main className="min-h-screen bg-background bg-grid bg-glow">
