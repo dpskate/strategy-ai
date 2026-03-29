@@ -6,8 +6,9 @@ Strategy AI — FastAPI Backend
 import json, os, time, uuid, traceback, math
 from datetime import datetime, timezone, timedelta
 from typing import Optional
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
 from backtest_engine import (
@@ -27,10 +28,22 @@ from smc_genes import compute_smc_indicators
 
 TZ8 = timezone(timedelta(hours=8))
 
+# ─── API Key Auth ───
+_API_KEY = os.getenv("STRATEGY_AI_API_KEY")
+_bearer = HTTPBearer(auto_error=False)
+
+async def verify_api_key(credentials: HTTPAuthorizationCredentials = Depends(_bearer)):
+    if not _API_KEY:
+        return  # dev mode: no key configured, allow all
+    if credentials is None or credentials.credentials != _API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+
+
 app = FastAPI(
     title="Strategy AI",
     description="AI 驅動的交易策略研發平台",
     version="0.1.0",
+    dependencies=[Depends(verify_api_key)],
 )
 
 app.add_middleware(

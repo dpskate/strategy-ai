@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.git/
+.claude/
+tests/
+*.json
+!requirements.txt
+web/
