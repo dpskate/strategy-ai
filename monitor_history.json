@@ -1,0 +1,24 @@
+{
+  "EMA_9_21_Test_1772126810": [
+    {
+      "timestamp": "2026-02-27T01:27:39.671670+08:00",
+      "rolling_sharpe": -14.07,
+      "recent_wr": 10.0,
+      "consec_losses": 8,
+      "roi": -2.1,
+      "drawdown": 2.8,
+      "alerts": 4
+    }
+  ],
+  "1H_Top1_1772127811": [
+    {
+      "timestamp": "2026-02-27T02:40:59.481750+08:00",
+      "rolling_sharpe": 265059.78,
+      "recent_wr": 100.0,
+      "consec_losses": 0,
+      "roi": 2.7,
+      "drawdown": 0.1,
+      "alerts": 1
+    }
+  ]
+}

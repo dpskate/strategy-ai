@@ -1,0 +1,28 @@
+[
+  {
+    "id": "1H_Top1_1772127811",
+    "name": "1H_Top1",
+    "code": "def strategy(candles, i, indicators, open_trades):\n    closes = [c.close for c in candles[:i+1]]\n    if len(closes) < 50:\n        return []\n    actions = []\n    _smc_ob_b = indicators.get('smc_ob_bull', {})\n    _smc_ob_b_val = _lookup_nearest(_smc_ob_b, candles[i].time)\n    _smc_ob_r = indicators.get('smc_ob_bear', {})\n    _smc_ob_r_val = _lookup_nearest(_smc_ob_r, candles[i].time)\n    if not open_trades:\n        if not (_smc_ob_b_val is None) and _smc_ob_b_val is not None and _smc_ob_b_val == True:\n            actions.append({\"action\": \"buy\"})\n        elif not (_smc_ob_r_val is None) and _smc_ob_r_val is not None and _smc_ob_r_val == True:\n            actions.append({\"action\": \"sell\"})\n    if open_trades:\n        rsi_ex = rsi(closes, 14)\n        if rsi_ex[i] is not None and rsi_ex[i] > 75:\n            actions.append({\"action\": \"close\"})\n    return actions\n",
+    "symbol": "BTCUSDT",
+    "interval": "1h",
+    "sl": 1.0,
+    "tp": 2.0,
+    "added_at": "2026-02-27T01:43:31.972577+08:00",
+    "status": "active",
+    "thresholds": {
+      "min_sharpe": 0.3,
+      "max_drawdown_pct": 15,
+      "max_consec_losses": 5,
+      "min_win_rate": 30,
+      "max_overfit_ratio": 5
+    },
+    "baseline": {
+      "sharpe": 265059.78,
+      "roi": 2.7,
+      "win_rate": 100.0,
+      "drawdown": 0.1,
+      "trades": 14,
+      "checked_at": "2026-02-27T01:44:01.325779+08:00"
+    }
+  }
+]
